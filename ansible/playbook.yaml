@@ -1,0 +1,59 @@
+- name: Add target IPs to Ansible inventory
+  hosts: localhost
+  gather_facts: yes
+  tasks:
+    - name: Add Master Node IP to inventory
+      add_host:
+        name: "{{ master_server_ip }}"
+        groups: master_node
+        ansible_user: ubuntu
+        ansible_private_key_file: ./keys/k8s-master-server-key.pem
+    - name: Add Worker Node IP to inventory
+      add_host:
+        name: "{{ worker_server_ip }}"
+        groups: worker_node
+        ansible_user: ubuntu
+        ansible_private_key_file: ./keys/k8s-worker-server-key.pem
+- hosts: master_node
+  gather_facts: False
+  tasks:
+    - name: Get join command from master
+      command: microk8s.add-node
+      register: join_command_output
+      become: true
+      become_user: root
+
+    - name: Extract the first join command
+      set_fact:
+        first_join_command: "{{ join_command_output.stdout_lines | select('search', 'microk8s.join') | list | first }}"
+
+    - debug:
+        msg: "Extracted first join command: {{ first_join_command }}"
+
+    - name: Save first join command to local file
+      delegate_to: localhost
+      copy:
+        content: "{{ first_join_command }}"
+        dest: "/tmp/microk8s_join_command"
+
+- hosts: worker_node
+  gather_facts: False
+  tasks:
+    - name: Fetch the join command from control machine
+      delegate_to: localhost
+      slurp:
+        src: "/tmp/microk8s_join_command"
+      register: join_command_content
+
+    - name: Set join command as fact
+      set_fact:
+        fetched_join_command: "{{ join_command_content['content'] | b64decode }}"
+
+    - debug:
+        msg: "Fetched command: {{ fetched_join_command }}"
+
+    - name: Join the MicroK8s cluster
+      command: "{{ fetched_join_command }}"
+      become: true
+      become_user: root
+
