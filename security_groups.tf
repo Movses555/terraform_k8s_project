@@ -56,6 +56,15 @@ resource "aws_security_group" "k8s-worker-server-sg" {
   description = var.worker_security_group_name
 
   ingress {
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
+    cidr_blocks = [
+      format("%s/32", jsondecode(data.http.ipinfo.response_body).ip)
+    ] # Allow SSH from MY IP only
+  }
+
+  ingress {
     from_port   = 0
     to_port     = 65535
     protocol    = "tcp"
